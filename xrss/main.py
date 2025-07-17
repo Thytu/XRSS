@@ -136,14 +136,19 @@ async def refresh_user_tweets_cache(username: str) -> None:
                 )
 
         # Fetch all retweets in parallel
+        retweet_map = {}
         if retweet_tasks:
             retweet_results = await asyncio.gather(*retweet_tasks)
             retweet_map = {tweet.id: clean_tweet(tweet.full_text) for tweet in retweet_results}
 
-            # Update retweet full_text
-            for tweet in all_tweets:
-                if tweet.type == "Retweet":
-                    setattr(tweet, "full_text", retweet_map[tweet.retweeted_tweet.id])
+        # Helper function to get correct full_text for tweets
+        def get_tweet_text(tweet):
+            """Get the appropriate text content for a tweet, handling retweets properly."""
+            if (tweet.type == "Retweet" and
+                tweet.retweeted_tweet and
+                tweet.retweeted_tweet.id in retweet_map):
+                return retweet_map[tweet.retweeted_tweet.id]
+            return clean_tweet(tweet.full_text)
 
         processed_tweets = [
             {
@@ -151,7 +156,7 @@ async def refresh_user_tweets_cache(username: str) -> None:
                 "type": tweet.type,
                 "id": tweet.id,
                 "link": f"https://x.com/{username}/status/{tweet.id}",
-                "full_text": clean_tweet(tweet.full_text),
+                "full_text": get_tweet_text(tweet),
                 "in_reply_to": [
                     {
                         "id": _reply.id,
